@@ -7,54 +7,48 @@ Thanks for your interest in contributing to gitlab-code-reader-mcp!
 ```bash
 git clone https://github.com/nanami7777777/gitlab-code-reader-mcp.git
 cd gitlab-code-reader-mcp
-npm install
-npm run build
+go build ./cmd/server/
+go test ./...
 ```
 
 ## Development
 
 ```bash
-# Run in dev mode (auto-reload)
-npm run dev
-
 # Build
-npm run build
+go build -o server ./cmd/server/
 
-# Type check
-npx tsc --noEmit
+# Run
+GITLAB_TOKEN=glpat-xxx ./server
+
+# Test
+go test ./... -v
+
+# Lint (optional, requires golangci-lint)
+golangci-lint run
 ```
-
-## Testing Locally
-
-Set your GitLab token and run:
-
-```bash
-GITLAB_TOKEN=glpat-xxx GITLAB_URL=https://gitlab.com npm start
-```
-
-Then connect via any MCP client (Claude Code, Kiro, etc.).
 
 ## Pull Requests
 
 1. Fork the repo and create a branch from `main`
 2. Make your changes
-3. Ensure `npm run build` passes with no errors
+3. Ensure `go build ./cmd/server/` and `go test ./...` pass
 4. Write a clear PR description explaining what and why
 5. Keep PRs focused — one feature or fix per PR
 
 ## Code Style
 
-- TypeScript strict mode
-- Prefer explicit types over `any` where practical
-- Keep tool implementations in separate files under `src/tools/`
+- Follow standard Go conventions (`gofmt`, `go vet`)
+- Keep tool implementations in separate files under `internal/tools/`
 - Follow existing patterns for error handling and output formatting
+- Add tests for new functionality
 
 ## Adding a New Tool
 
-1. Create `src/tools/your-tool.ts` with schema + handler
-2. Register it in `src/index.ts` via `server.tool()`
-3. Update README.md tool table
-4. Add relevant GitLab API methods to `src/gitlab/client.ts`
+1. Create `internal/tools/your_tool.go` with tool definition + handler
+2. Register it in `cmd/server/main.go`
+3. Update README.md tool table (both EN and CN sections)
+4. Add relevant GitLab API methods to `internal/gitlab/client.go`
+5. Add tests
 
 ## Reporting Issues
 
@@ -62,7 +56,7 @@ Open an issue with:
 - What you expected
 - What actually happened
 - Steps to reproduce
-- Your environment (Node version, MCP client, GitLab version)
+- Your environment (Go version, MCP client, GitLab version)
 
 ## License
 

@@ -1,6 +1,8 @@
 # gitlab-code-reader-mcp
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/nanami7777777/gitlab-code-reader-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/nanami7777777/gitlab-code-reader-mcp/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nanami7777777/gitlab-code-reader-mcp)](https://goreportcard.com/report/github.com/nanami7777777/gitlab-code-reader-mcp)
 
 <p align="center">
   <a href="#english">English</a> | <a href="#中文">中文</a>
@@ -49,12 +51,29 @@ Borrowed from Claude Code's architecture:
 
 ### Quick Start
 
+**Option 1: Go install (recommended)**
+```bash
+go install github.com/nanami7777777/gitlab-code-reader-mcp/cmd/server@latest
+GITLAB_TOKEN=glpat-xxx gitlab-code-reader-mcp
+```
+
+**Option 2: Build from source**
 ```bash
 git clone https://github.com/nanami7777777/gitlab-code-reader-mcp.git
 cd gitlab-code-reader-mcp
 go build -o server ./cmd/server/
 GITLAB_TOKEN=glpat-xxx ./server
 ```
+
+**Option 3: Docker**
+```bash
+docker run --rm -e GITLAB_TOKEN=glpat-xxx -e GITLAB_URL=https://gitlab.example.com \
+  ghcr.io/nanami7777777/gitlab-code-reader-mcp
+```
+
+**Option 4: Download binary**
+
+Grab a pre-built binary from [Releases](https://github.com/nanami7777777/gitlab-code-reader-mcp/releases).
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -186,12 +205,29 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome!
 
 ### 快速开始
 
+**方式一：Go install（推荐）**
+```bash
+go install github.com/nanami7777777/gitlab-code-reader-mcp/cmd/server@latest
+GITLAB_TOKEN=glpat-xxx gitlab-code-reader-mcp
+```
+
+**方式二：从源码构建**
 ```bash
 git clone https://github.com/nanami7777777/gitlab-code-reader-mcp.git
 cd gitlab-code-reader-mcp
 go build -o server ./cmd/server/
 GITLAB_TOKEN=glpat-xxx ./server
 ```
+
+**方式三：Docker**
+```bash
+docker run --rm -e GITLAB_TOKEN=glpat-xxx -e GITLAB_URL=https://gitlab.example.com \
+  ghcr.io/nanami7777777/gitlab-code-reader-mcp
+```
+
+**方式四：下载二进制**
+
+从 [Releases](https://github.com/nanami7777777/gitlab-code-reader-mcp/releases) 下载预编译二进制。
 
 | 变量 | 必需 | 默认值 | 说明 |
 |------|------|--------|------|

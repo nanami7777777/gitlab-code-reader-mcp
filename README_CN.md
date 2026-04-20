@@ -6,7 +6,9 @@
 
 **9 个专注工具。单个 Go 二进制。零冗余。**
 
-[English](README.md)
+<p>
+  <a href="README.md">English</a> | <a href="README_CN.md">简体中文</a>
+</p>
 
 ## 为什么做这个？
 

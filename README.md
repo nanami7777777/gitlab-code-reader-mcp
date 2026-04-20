@@ -6,7 +6,9 @@ A lightweight MCP (Model Context Protocol) server that lets AI assistants read a
 
 **9 focused tools. Single Go binary. Zero bloat.**
 
-[中文文档](README_CN.md)
+<p>
+  <a href="README.md">English</a> | <a href="README_CN.md">简体中文</a>
+</p>
 
 ## Why?
 

@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 )
@@ -105,4 +106,65 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// guidedError wraps an API error with actionable suggestions for the AI.
+// This is a core Claude Code design principle: errors should guide the next action.
+func guidedError(err error, toolContext string, args map[string]any) string {
+	msg := err.Error()
+
+	// File not found
+	if strings.Contains(msg, "404") {
+		switch toolContext {
+		case "read_file", "read_symbols", "blame":
+			filePath := argStr(args, "file_path")
+			// Extract just the filename for search suggestion
+			parts := strings.Split(filePath, "/")
+			name := parts[len(parts)-1]
+			nameStem := strings.TrimSuffix(name, filepath.Ext(name))
+			return fmt.Sprintf(
+				"❌ File not found: %s\n\n"+
+					"Suggestions:\n"+
+					"  → gl_find_files(pattern: \"**/%s*\") to search for the file by name\n"+
+					"  → gl_search_code(query: \"%s\") to find references to it\n"+
+					"  → gl_list_directory() to browse the project structure",
+				filePath, name, nameStem,
+			)
+		case "list_directory":
+			dirPath := argStr(args, "path")
+			return fmt.Sprintf(
+				"❌ Directory not found: %s\n\n"+
+					"Suggestions:\n"+
+					"  → gl_list_directory() with no path to see the root structure\n"+
+					"  → gl_find_files(pattern: \"**/*\") to search the entire repository",
+				dirPath,
+			)
+		default:
+			projectID := argStr(args, "project_id")
+			return fmt.Sprintf(
+				"❌ Not found (404) for project %s\n\n"+
+					"Suggestions:\n"+
+					"  → Check the project_id — use numeric ID (e.g. 609) or full path (e.g. mygroup/myproject)\n"+
+					"  → Verify the ref (branch/tag) exists",
+				projectID,
+			)
+		}
+	}
+
+	// Auth errors
+	if strings.Contains(msg, "401") || strings.Contains(msg, "403") {
+		return fmt.Sprintf(
+			"❌ Access denied\n\n" +
+				"The GitLab token does not have permission for this operation.\n" +
+				"Ensure the token has `read_api` scope and access to the project.",
+		)
+	}
+
+	// Rate limit
+	if strings.Contains(msg, "429") {
+		return "❌ Rate limited by GitLab API. Wait a moment and retry."
+	}
+
+	// Fallback
+	return fmt.Sprintf("❌ Error: %v", err)
 }

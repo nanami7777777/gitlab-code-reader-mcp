@@ -39,7 +39,7 @@ func ReadFile(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 
 		file, err := client.GetFileContent(projectID, filePath, ref)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("❌ Error: %v", err)), nil
+			return mcp.NewToolResultError(guidedError(err, "read_file", args)), nil
 		}
 
 		if isBinary(file.Content) {

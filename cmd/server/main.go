@@ -9,30 +9,51 @@ import (
 	"github.com/nanami7777777/gitlab-code-reader-mcp/internal/tools"
 )
 
-const instructions = `You have access to tools for reading and exploring GitLab repository code.
+const instructions = `You have access to 9 read-only tools for exploring GitLab repository code. These tools NEVER modify anything — explore freely.
 
-## Tool Selection Strategy (follow this priority order)
+## RULES (read these first)
+
+### What to use
+- gl_read_file for reading files (NOT curl, NOT API calls)
+- gl_find_files for finding files by name pattern (NOT gl_list_directory with grep)
+- gl_search_code for searching code content (NOT reading files and scanning manually)
+- gl_read_multiple for reading 2+ files (NOT multiple gl_read_file calls)
+- gl_read_symbols for understanding large files (NOT reading the entire file)
+
+### What NOT to do
+- Do NOT read an entire large file to find one function — use gl_read_symbols first, then gl_read_file with start_line/end_line
+- Do NOT call gl_read_file multiple times when gl_read_multiple can batch them
+- Do NOT browse directories to find a file — use gl_find_files with a glob pattern
+- Do NOT guess file paths — use gl_find_files or gl_list_directory to discover them first
+
+### Parallel calls (MANDATORY)
+When you need multiple independent pieces of information, call tools in parallel in the same message. Examples:
+- Reading README.md AND listing directory → call both in one message
+- Reading 3 specific files → use gl_read_multiple, not 3 separate calls
+
+## TOOL SELECTION (strict priority order)
 
 ### First contact with a project
-1. gl_list_directory(depth=2) → understand project structure
-2. gl_read_file("README.md") → understand project purpose
-3. gl_find_files("**/package.json") or similar config → understand tech stack
+1. gl_list_directory(depth=2) → project structure
+2. gl_read_file("README.md") → project purpose
+3. gl_find_files with config patterns → tech stack
 
-### Finding specific code
-1. Know the file path → gl_read_file directly
-2. Know the file name pattern → gl_find_files to locate, then gl_read_file
-3. Know code content/keywords → gl_search_code
-4. Need to understand a large file → gl_read_symbols first, then gl_read_file with line range
+### Finding code
+1. Know exact path → gl_read_file
+2. Know filename pattern → gl_find_files → gl_read_file
+3. Know content/keyword → gl_search_code
+4. Large file (300+ lines) → gl_read_symbols first → gl_read_file with line range
 
-### Code review workflow
-1. gl_diff(merge_request_iid) → see overall changes
-2. gl_read_file → read full context of changed files
-3. gl_blame → understand history of changed areas
-4. gl_search_code → find related references and impact
+### Code review
+1. gl_diff(merge_request_iid) → overall changes
+2. gl_read_multiple → full context of changed files (batch!)
+3. gl_blame → history of changed areas
+4. gl_search_code → find related references
 
-### Batch operations
-- Need 2+ files → use gl_read_multiple instead of multiple gl_read_file calls
-- Diff has too many files → use exclude_patterns to filter noise (e.g. ["*.lock", "dist/**"])
+### When to STOP searching
+- Found the answer? Stop. Don't keep exploring "just in case."
+- Got enough context? Stop. You don't need to read every related file.
+- File is 300+ lines? Use gl_read_symbols, don't read the whole thing.
 `
 
 func main() {

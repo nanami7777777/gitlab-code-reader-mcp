@@ -45,7 +45,7 @@ func Blame(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 
 		ranges, err := client.GetBlame(projectID, filePath, ref)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("❌ Error: %v", err)), nil
+			return mcp.NewToolResultError(guidedError(err, "blame", args)), nil
 		}
 
 		header := fmt.Sprintf("Blame: %s (ref: %s)", filePath, ref)

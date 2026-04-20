@@ -34,7 +34,7 @@ func Diff(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 		if mrIID, ok := argFloat(args, "merge_request_iid"); ok && mrIID > 0 {
 			d, err := client.GetMRDiffs(projectID, int(mrIID))
 			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("❌ Error: %v", err)), nil
+				return mcp.NewToolResultError(guidedError(err, "diff", args)), nil
 			}
 			diffs = d
 			label = fmt.Sprintf("MR !%d", int(mrIID))
@@ -46,7 +46,7 @@ func Diff(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 			}
 			result, err := client.Compare(projectID, fromRef, toRef)
 			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("❌ Error: %v", err)), nil
+				return mcp.NewToolResultError(guidedError(err, "diff", args)), nil
 			}
 			diffs = result.Diffs
 			label = fmt.Sprintf("%s...%s", fromRef, toRef)

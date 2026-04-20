@@ -30,31 +30,56 @@ func SearchCode(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 
 		blobs, err := client.SearchCode(projectID, query, ref)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("❌ Error: %v", err)), nil
+			return mcp.NewToolResultError(guidedError(err, "search_code", args)), nil
+		}
+
+		// Deduplicate: merge multiple matches from the same file
+		type fileMatch struct {
+			path    string
+			entries []gitlab.SearchBlob
+		}
+		seen := map[string]int{} // path -> index in deduped
+		var deduped []fileMatch
+		for _, blob := range blobs {
+			if idx, ok := seen[blob.Path]; ok {
+				deduped[idx].entries = append(deduped[idx].entries, blob)
+			} else {
+				seen[blob.Path] = len(deduped)
+				deduped = append(deduped, fileMatch{path: blob.Path, entries: []gitlab.SearchBlob{blob}})
+			}
 		}
 
 		// filter by file pattern
 		if filePattern != "" {
 			ext := strings.TrimPrefix(filePattern, "*")
-			var filtered []gitlab.SearchBlob
-			for _, b := range blobs {
-				if strings.HasSuffix(b.Filename, ext) || strings.HasSuffix(b.Path, ext) {
-					filtered = append(filtered, b)
+			var filtered []fileMatch
+			for _, fm := range deduped {
+				if strings.HasSuffix(fm.path, ext) {
+					filtered = append(filtered, fm)
 				}
 			}
-			blobs = filtered
+			deduped = filtered
 		}
 
-		if len(blobs) == 0 {
+		totalMatches := 0
+		for _, fm := range deduped {
+			totalMatches += len(fm.entries)
+		}
+
+		if len(deduped) == 0 {
 			return mcp.NewToolResultText(fmt.Sprintf(
-				"No results found for \"%s\" in project %s.\n\nSuggestions:\n- Try different keywords\n- Check spelling\n- Use gl_find_files to locate files by name pattern instead",
-				query, projectID,
+				"No results found for \"%s\" in project %s.\n\n"+
+					"Suggestions:\n"+
+					"  → Try different keywords or check spelling\n"+
+					"  → gl_find_files(pattern: \"**/*%s*\") to search by filename\n"+
+					"  → gl_list_directory(depth: 2) to browse the project structure",
+				query, projectID, query,
 			)), nil
 		}
 
-		limited := blobs
-		if len(blobs) > maxResults {
-			limited = blobs[:maxResults]
+		limited := deduped
+		if len(deduped) > maxResults {
+			limited = deduped[:maxResults]
 		}
 
 		var b strings.Builder
@@ -62,18 +87,24 @@ func SearchCode(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 		if ref != "" {
 			refInfo = fmt.Sprintf(" (ref: %s)", ref)
 		}
-		fmt.Fprintf(&b, "Found %d result(s) for \"%s\"%s\n", len(blobs), query, refInfo)
+		fmt.Fprintf(&b, "Found %d match(es) across %d file(s) for \"%s\"%s\n", totalMatches, len(deduped), query, refInfo)
 
-		for _, blob := range limited {
-			fmt.Fprintf(&b, "\n📄 %s:%d\n", blob.Path, blob.Startline)
-			lines := strings.Split(blob.Data, "\n")
-			for i, line := range lines {
-				fmt.Fprintf(&b, "  %5d\t%s\n", blob.Startline+i, line)
+		for _, fm := range limited {
+			fmt.Fprintf(&b, "\n📄 %s", fm.path)
+			if len(fm.entries) > 1 {
+				fmt.Fprintf(&b, " (%d matches)", len(fm.entries))
+			}
+			b.WriteString("\n")
+			for _, blob := range fm.entries {
+				lines := strings.Split(blob.Data, "\n")
+				for i, line := range lines {
+					fmt.Fprintf(&b, "  %5d\t%s\n", blob.Startline+i, line)
+				}
 			}
 		}
 
-		if len(blobs) > maxResults {
-			fmt.Fprintf(&b, "\n⚠️ Showing %d of %d results. Refine your query for more specific results.", maxResults, len(blobs))
+		if len(deduped) > maxResults {
+			fmt.Fprintf(&b, "\n⚠️ Showing %d of %d files. Refine your query for more specific results.", maxResults, len(deduped))
 		}
 		return mcp.NewToolResultText(b.String()), nil
 	}

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gobwas/glob"
@@ -43,12 +44,12 @@ func FindFiles(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 
 		tree, err := client.GetTree(projectID, basePath, ref, true)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("❌ Error: %v", err)), nil
+			return mcp.NewToolResultError(guidedError(err, "find_files", args)), nil
 		}
 
 		g, err := glob.Compile(pattern, '/')
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("❌ Invalid glob pattern: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("❌ Invalid glob pattern: %v\n\nExamples: **/*.go, src/**/*.ts, *.config.{js,json}", err)), nil
 		}
 
 		var matched []string
@@ -64,6 +65,16 @@ func FindFiles(client *gitlab.Client) (mcp.Tool, server.ToolHandlerFunc) {
 				matched = append(matched, item.Path)
 			}
 		}
+
+		// Sort by path depth (shallow first), then alphabetically
+		sort.Slice(matched, func(i, j int) bool {
+			di := strings.Count(matched[i], "/")
+			dj := strings.Count(matched[j], "/")
+			if di != dj {
+				return di < dj
+			}
+			return matched[i] < matched[j]
+		})
 
 		limited := matched
 		truncated := false

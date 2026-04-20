@@ -44,14 +44,13 @@ Borrowed from Claude Code's architecture:
 ```bash
 git clone https://github.com/nanami7777777/gitlab-code-reader-mcp.git
 cd gitlab-code-reader-mcp
-npm install
-npm run build
+go build -o server ./cmd/server/
 ```
 
 ### Run
 
 ```bash
-GITLAB_TOKEN=glpat-xxx npm start
+GITLAB_TOKEN=glpat-xxx ./server
 ```
 
 ### Environment Variables
@@ -71,8 +70,8 @@ Add to `.kiro/settings/mcp.json`:
 {
   "mcpServers": {
     "gitlab-code-reader": {
-      "command": "node",
-      "args": ["/path/to/gitlab-code-reader-mcp/dist/index.js"],
+      "command": "/path/to/gitlab-code-reader-mcp/server",
+      "args": [],
       "env": {
         "GITLAB_TOKEN": "glpat-xxx",
         "GITLAB_URL": "https://gitlab.example.com"
@@ -90,8 +89,8 @@ Add to `.claude/settings.json`:
 {
   "mcpServers": {
     "gitlab-code-reader": {
-      "command": "node",
-      "args": ["/path/to/gitlab-code-reader-mcp/dist/index.js"],
+      "command": "/path/to/gitlab-code-reader-mcp/server",
+      "args": [],
       "env": {
         "GITLAB_TOKEN": "glpat-xxx",
         "GITLAB_URL": "https://gitlab.example.com"
@@ -154,25 +153,25 @@ For files under 300 lines, it returns the full content instead (same behavior as
 ## Architecture
 
 ```
-src/
-├── index.ts              # MCP server entry point + tool registration
-├── tools/                # One file per tool
-│   ├── read-file.ts
-│   ├── read-multiple.ts
-│   ├── find-files.ts
-│   ├── search-code.ts
-│   ├── list-directory.ts
-│   ├── read-symbols.ts
-│   ├── diff.ts
-│   ├── blame.ts
-│   └── commit-history.ts
+cmd/server/main.go          # MCP server entry point + tool registration
+internal/
 ├── gitlab/
-│   ├── client.ts         # GitLab API client with caching
-│   ├── cache.ts          # LRU cache implementation
-│   └── types.ts          # API response types
-└── utils/
-    ├── format.ts         # Line numbers, truncation, binary detection
-    └── symbols.ts        # Regex-based symbol extraction
+│   ├── client.go           # GitLab API client with caching
+│   ├── cache.go            # LRU cache implementation
+│   └── types.go            # API response types
+├── tools/
+│   ├── helpers.go          # Line numbers, truncation, binary detection
+│   ├── read_file.go
+│   ├── read_multiple.go
+│   ├── find_files.go
+│   ├── search_code.go
+│   ├── list_directory.go
+│   ├── read_symbols.go
+│   ├── diff.go
+│   ├── blame.go
+│   └── commit_history.go
+└── symbols/
+    └── extract.go          # Regex-based symbol extraction
 ```
 
 ## Contributing

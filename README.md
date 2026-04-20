@@ -180,34 +180,67 @@ internal/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome!
 
-## Benchmarks: vs Full GitLab MCP (141 tools)
+## Benchmarks: vs [@zereight/mcp-gitlab](https://github.com/zereight/mcp-gitlab)
 
-### Token Savings
+A fair comparison focusing only on **code reading** capabilities (not the full 141-tool set).
 
-| Scenario | Full GitLab MCP (141 tools) | This project (9 tools) | Savings |
+### Equivalent Tools
+
+| This project | @zereight/mcp-gitlab equivalent | Difference |
+|---|---|---|
+| `gl_read_file` | `get_file_contents` | Line numbers, line ranges, auto-truncation at 500 lines, binary detection |
+| `gl_read_multiple` | _(none)_ | Batch read up to 10 files in one call |
+| `gl_find_files` | `get_repository_tree` | Glob pattern matching (`**/*.go`), not just flat directory listing |
+| `gl_search_code` | `search_code` / `search_project_code` | Pre-formatted output with line numbers and context |
+| `gl_list_directory` | `get_repository_tree` | Configurable depth (1-3), tree-style display |
+| `gl_read_symbols` | _(none)_ | Large files return signatures only, saving 90% tokens |
+| `gl_diff` | `list_merge_request_diffs` / `get_commit_diff` | File filtering, exclude patterns, auto-truncation |
+| `gl_blame` | _(none)_ | Line-range blame with formatted output |
+| `gl_commit_history` | `list_commits` | Includes addition/deletion stats per commit |
+
+### Token Comparison (code reading only)
+
+| Scenario | @zereight/mcp-gitlab | This project | Savings |
 |----------|---|---|---|
-| **Tool descriptions (per-conversation fixed cost)** | ~15,000-20,000 tokens | ~1,000 tokens | **93-95%** |
-| **Read small file (61 lines)** | ~800 tokens (base64 + metadata) | ~500 tokens (plain text + line numbers) | ~37% |
-| **Read large file (2000 lines)** | ~20,000 tokens (full dump) | ~3,500 tokens (truncated at 500 lines) | **82%** |
-| **Understand large file structure** | Read full file ~5,000 tokens | gl_read_symbols ~500 tokens (signatures only) | **90%** |
-| **Batch read 5 files** | 5 separate tool calls | 1 gl_read_multiple call | 4 fewer round-trips |
+| **Tool descriptions (reading tools only, ~10 tools)** | ~2,000 tokens | ~1,000 tokens | **50%** |
+| **Read a 61-line file** | ~800 tokens (raw JSON + base64) | ~500 tokens (plain text + line numbers) | **37%** |
+| **Read a 2000-line file** | ~20,000 tokens (full content, no truncation) | ~3,500 tokens (truncated at 500 lines) | **82%** |
+| **Understand a large file's structure** | Must read full file ~5,000 tokens | `gl_read_symbols` ~500 tokens (signatures only) | **90%** |
+| **Read 5 files for code review** | 5 separate `get_file_contents` calls | 1 `gl_read_multiple` call | **4 fewer round-trips** |
+
+### Response Format
+
+**@zereight/mcp-gitlab** `get_file_contents` returns raw GitLab API JSON:
+```json
+{"file_name":"config.ts","size":1700,"encoding":"base64",
+ "content":"dXBzdHJlYW0gZW5yb2xsbWVudHMge...",
+ "content_sha256":"abc123...","blob_id":"...","last_commit_id":"..."}
+```
+→ AI must mentally decode base64. No line numbers. No truncation for large files.
+
+**This project** `gl_read_file` returns ready-to-use text:
+```
+File: config.ts (1.7 KB, 61 lines, ref: main)
+Showing lines 1-61 of 61
+────────────────────────────────────────
+ 1  upstream enrollments {
+ 2      server host.docker.internal:8088;
+...
+```
+→ Pre-decoded. Line numbers for precise referencing. Auto-truncated for large files.
 
 ### Speed
 
-| Dimension | Full GitLab MCP | This project | Why |
+| Dimension | @zereight/mcp-gitlab | This project | Why |
 |-----------|---|---|---|
-| **Startup** | 3-5s (Node.js + npx download) | <0.1s (Go binary) | No runtime dependency |
-| **Tool selection** | Slow (AI picks from 141 tools) | Fast (only 9 choices) | Smaller decision space |
-| **Repeated requests** | Always hits API | LRU cache returns instantly | 5-min TTL cache |
-| **Code review workflow** | Multiple tool calls | gl_diff + gl_read_multiple in 2 steps | Workflow-oriented design |
+| **Startup** | 3-5s (Node.js + npx) | <0.1s (Go binary) | No runtime dependency |
+| **Repeated file reads** | Always hits GitLab API | LRU cache (5-min TTL) | Same ref = same content |
+| **Batch operations** | N calls for N files | 1 call for up to 10 files | `gl_read_multiple` |
 
-### Why the difference?
+### When to use which?
 
-The full GitLab MCP returns raw API JSON (base64-encoded content, sha256 hashes, blob IDs, commit metadata). The AI has to decode and parse it mentally.
-
-This project returns **pre-formatted, line-numbered, truncated text** — exactly what the AI needs to understand code. No wasted tokens on metadata the AI will never use.
-
-**One-line summary: ~15,000 tokens saved per conversation in fixed costs alone. Large file scenarios save 80-90% more. Startup is 50x faster.**
+- **Use this project** when your AI needs to **read and understand code** — exploring repos, reviewing MRs, searching for patterns
+- **Use @zereight/mcp-gitlab** when you need to **write** — create MRs, post comments, manage issues, run pipelines
 
 ## License
 

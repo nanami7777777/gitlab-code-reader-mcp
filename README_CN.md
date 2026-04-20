@@ -152,34 +152,67 @@ GITLAB_TOKEN=glpat-xxx ./server
 
 300 行以下的文件直接返回全部内容（与 Claude Code 的 `readCode` 行为一致）。
 
-## 性能对比：vs 全功能 GitLab MCP（141 个工具）
+## 性能对比：vs [@zereight/mcp-gitlab](https://github.com/zereight/mcp-gitlab)
 
-### Token 节省
+公平对比——只比较**代码读取**能力（不是全部 141 个工具）。
 
-| 场景 | 全功能 GitLab MCP (141 工具) | 本项目 (9 工具) | 节省 |
+### 等价工具对照
+
+| 本项目 | @zereight/mcp-gitlab 等价工具 | 差异 |
+|---|---|---|
+| `gl_read_file` | `get_file_contents` | 带行号、行范围、500 行自动截断、二进制检测 |
+| `gl_read_multiple` | _(无)_ | 一次调用批量读取最多 10 个文件 |
+| `gl_find_files` | `get_repository_tree` | 支持 glob 模式匹配（`**/*.go`），不只是平铺目录 |
+| `gl_search_code` | `search_code` / `search_project_code` | 预格式化输出，带行号和上下文 |
+| `gl_list_directory` | `get_repository_tree` | 可配置深度（1-3），树形展示 |
+| `gl_read_symbols` | _(无)_ | 大文件只返回签名，节省 90% token |
+| `gl_diff` | `list_merge_request_diffs` / `get_commit_diff` | 文件过滤、排除模式、自动截断 |
+| `gl_blame` | _(无)_ | 按行范围查看 blame，格式化输出 |
+| `gl_commit_history` | `list_commits` | 包含每次提交的增删统计 |
+
+### Token 对比（仅代码读取）
+
+| 场景 | @zereight/mcp-gitlab | 本项目 | 节省 |
 |------|---|---|---|
-| **工具描述（每次对话固定成本）** | ~15,000-20,000 tokens | ~1,000 tokens | **93-95%** |
-| **读小文件（61 行）** | ~800 tokens (base64+元数据) | ~500 tokens (纯文本+行号) | ~37% |
-| **读大文件（2000 行）** | ~20,000 tokens (全量返回) | ~3,500 tokens (截断500行) | **82%** |
-| **理解大文件结构** | 读全文 ~5,000 tokens | gl_read_symbols ~500 tokens (只返回签名) | **90%** |
-| **批量读 5 个文件** | 5 次工具调用 | 1 次 gl_read_multiple | 减少 4 次往返 |
+| **工具描述（仅读取相关 ~10 个工具）** | ~2,000 tokens | ~1,000 tokens | **50%** |
+| **读 61 行文件** | ~800 tokens (原始 JSON + base64) | ~500 tokens (纯文本+行号) | **37%** |
+| **读 2000 行文件** | ~20,000 tokens (全量返回，无截断) | ~3,500 tokens (截断 500 行) | **82%** |
+| **理解大文件结构** | 必须读全文 ~5,000 tokens | `gl_read_symbols` ~500 tokens (只返回签名) | **90%** |
+| **代码审查读 5 个文件** | 5 次 `get_file_contents` 调用 | 1 次 `gl_read_multiple` | **减少 4 次往返** |
 
-### 速度
+### 响应格式对比
 
-| 维度 | 全功能 GitLab MCP | 本项目 | 原因 |
+**@zereight/mcp-gitlab** 的 `get_file_contents` 返回原始 GitLab API JSON：
+```json
+{"file_name":"config.ts","size":1700,"encoding":"base64",
+ "content":"dXBzdHJlYW0gZW5yb2xsbWVudHMge...",
+ "content_sha256":"abc123...","blob_id":"...","last_commit_id":"..."}
+```
+→ AI 需要在"脑中"解码 base64。无行号。大文件无截断保护。
+
+**本项目** 的 `gl_read_file` 返回即用文本：
+```
+File: config.ts (1.7 KB, 61 lines, ref: main)
+Showing lines 1-61 of 61
+────────────────────────────────────────
+ 1  upstream enrollments {
+ 2      server host.docker.internal:8088;
+...
+```
+→ 已解码。带行号便于精确引用。大文件自动截断。
+
+### 速度对比
+
+| 维度 | @zereight/mcp-gitlab | 本项目 | 原因 |
 |------|---|---|---|
-| **启动速度** | 3-5 秒 (Node.js + npx) | <0.1 秒 (Go 二进制) | 无运行时依赖 |
-| **工具选择** | 慢（AI 从 141 个工具中选） | 快（只有 9 个选项） | 决策空间小 |
-| **重复请求** | 每次都打 API | LRU 缓存直接返回 | 5 分钟 TTL |
-| **代码审查流程** | 多次工具调用 | gl_diff + gl_read_multiple 两步搞定 | 面向工作流设计 |
+| **启动** | 3-5 秒 (Node.js + npx) | <0.1 秒 (Go 二进制) | 无运行时依赖 |
+| **重复读取** | 每次都打 GitLab API | LRU 缓存（5 分钟 TTL） | 同 ref = 同内容 |
+| **批量操作** | N 个文件 = N 次调用 | 最多 10 个文件 = 1 次调用 | `gl_read_multiple` |
 
-### 为什么差异这么大？
+### 什么时候用哪个？
 
-全功能 GitLab MCP 返回原始 API JSON（base64 编码的内容、sha256 哈希、blob ID、commit 元数据）。AI 需要在"脑中"解码和解析。
-
-本项目返回**预格式化的、带行号的、有截断保护的纯文本**——正是 AI 理解代码所需要的格式。不浪费 token 在 AI 永远不会用到的元数据上。
-
-**一句话总结：每次对话仅固定成本就省 ~15,000 tokens。大文件场景额外省 80-90%。启动速度快 50 倍。**
+- **用本项目**：当 AI 需要**读取和理解代码**时——探索仓库、审查 MR、搜索模式
+- **用 @zereight/mcp-gitlab**：当需要**写操作**时——创建 MR、发评论、管理 issue、运行 pipeline
 
 ## 项目结构
 

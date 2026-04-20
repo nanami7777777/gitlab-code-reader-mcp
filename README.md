@@ -1,44 +1,71 @@
 # gitlab-code-reader-mcp
 
-A lightweight MCP server for reading GitLab repository code, inspired by Claude Code's Read/Grep/Glob/LSP tools.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 9 Tools
+A lightweight MCP (Model Context Protocol) server that lets AI assistants read and explore GitLab repository code. Inspired by how [Claude Code](https://code.claude.com) reads local codebases with its Read/Grep/Glob/LSP tools — but for remote GitLab repos.
 
-| Tool | Claude Code Equivalent | Purpose |
-|------|----------------------|---------|
-| `gl_read_file` | Read | Read file with line numbers, line ranges, smart truncation |
-| `gl_read_multiple` | Read (batch) | Read up to 10 files in one call |
-| `gl_find_files` | Glob | Find files by glob pattern |
-| `gl_search_code` | Grep | Search code content across repo |
-| `gl_list_directory` | ls/tree | Browse directory structure |
-| `gl_read_symbols` | readCode/LSP | Extract symbols from large files, full content for small files |
-| `gl_diff` | git diff | View MR diffs or ref comparisons |
-| `gl_blame` | git blame | See who changed what and when |
-| `gl_commit_history` | git log | View commit history with stats |
+**9 focused tools. ~800 lines of TypeScript. Zero bloat.**
+
+## Why?
+
+Existing GitLab MCP servers expose 100+ tools covering every GitLab API. That's great for full GitLab automation, but it floods the AI's context with tool descriptions and makes code reading inefficient.
+
+This project takes a different approach: **do one thing well**. Just code reading. The tool descriptions fit in ~500 tokens instead of thousands, and every tool is optimized for how AI assistants actually explore code.
+
+## Tools
+
+| Tool | Inspired by | What it does |
+|------|-------------|-------------|
+| `gl_read_file` | Claude Code's `Read` | Read a file with line numbers, line ranges, smart truncation |
+| `gl_read_multiple` | Batch `Read` | Read up to 10 files in one call |
+| `gl_find_files` | Claude Code's `Glob` | Find files by glob pattern (`**/*.ts`, `src/**/*.go`) |
+| `gl_search_code` | Claude Code's `Grep` | Search code content across the repo |
+| `gl_list_directory` | `ls` / `tree` | Browse directory structure with configurable depth |
+| `gl_read_symbols` | Claude Code's `readCode` | Small files → full content. Large files → function/class signatures |
+| `gl_diff` | `git diff` | View MR diffs or compare two refs, with file filtering |
+| `gl_blame` | `git blame` | See who changed each line and when |
+| `gl_commit_history` | `git log` | View commit history with addition/deletion stats |
+
+## Design Principles
+
+Borrowed from Claude Code's architecture:
+
+- **Token is budget** — Large files auto-truncate at 500 lines. Batch reads cap at 200 lines/file. Minified lines get cut at 500 chars.
+- **Symbols first** — For files over 300 lines, `gl_read_symbols` returns function/class signatures instead of dumping the whole file. Read specific sections with line ranges.
+- **Caching** — LRU cache for repository trees (5 min), file content (5 min), project info (10 min). Same commit = same content, no need to re-fetch.
+- **Line numbers everywhere** — All file output includes line numbers so the AI can reference "line 42" and use `start_line`/`end_line` to zoom in.
+- **Guided errors** — Instead of raw 404s, errors suggest what to try next.
+- **Built-in strategy** — The MCP `instructions` field teaches the AI when to use which tool.
 
 ## Quick Start
 
+### Install
+
 ```bash
-# Install
+git clone https://github.com/nanami7777777/gitlab-code-reader-mcp.git
+cd gitlab-code-reader-mcp
 npm install
-
-# Build
 npm run build
+```
 
-# Run (requires GITLAB_TOKEN)
+### Run
+
+```bash
 GITLAB_TOKEN=glpat-xxx npm start
 ```
 
-## Environment Variables
+### Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GITLAB_TOKEN` | Yes | — | GitLab personal access token |
+| `GITLAB_TOKEN` | Yes | — | GitLab personal access token (needs `read_api` scope) |
 | `GITLAB_URL` | No | `https://gitlab.com` | GitLab instance URL |
 
-## MCP Configuration
+## MCP Client Configuration
 
-Add to your MCP config (e.g. `.kiro/settings/mcp.json`):
+### Kiro
+
+Add to `.kiro/settings/mcp.json`:
 
 ```json
 {
@@ -55,11 +82,103 @@ Add to your MCP config (e.g. `.kiro/settings/mcp.json`):
 }
 ```
 
-## Design Principles (from Claude Code)
+### Claude Code
 
-1. **Token is budget** — Large files auto-truncate, symbols-first for big files
-2. **Caching** — Repository tree and file content cached (5 min TTL)
-3. **Line numbers** — All file output includes line numbers for precise referencing
-4. **Guided errors** — Errors suggest next steps instead of raw API messages
-5. **Batch operations** — `gl_read_multiple` reduces tool call overhead
-6. **Smart sizing** — Binary detection, minified line truncation, result limits
+Add to `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "gitlab-code-reader": {
+      "command": "node",
+      "args": ["/path/to/gitlab-code-reader-mcp/dist/index.js"],
+      "env": {
+        "GITLAB_TOKEN": "glpat-xxx",
+        "GITLAB_URL": "https://gitlab.example.com"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to `.cursor/mcp.json` with the same format as above.
+
+## Usage Examples
+
+Once connected, just ask your AI assistant naturally:
+
+```
+"Show me the directory structure of project mygroup/myproject"
+→ AI calls gl_list_directory
+
+"Find all TypeScript files in the src directory"
+→ AI calls gl_find_files with pattern **/*.ts
+
+"Read the main entry point"
+→ AI calls gl_read_file on src/index.ts
+
+"Search for where authentication is handled"
+→ AI calls gl_search_code with query "authenticate"
+
+"Show me what changed in MR !42"
+→ AI calls gl_diff with merge_request_iid: 42
+
+"Who last modified the config file?"
+→ AI calls gl_blame on config.ts
+```
+
+## Project ID
+
+Tools accept `project_id` as either:
+- **Numeric ID**: `609`
+- **Path**: `mygroup/myproject`
+
+Both formats work. Find your project ID on the GitLab project settings page or via the API.
+
+## Symbol Extraction
+
+`gl_read_symbols` uses regex-based extraction (no external dependencies). Supported languages:
+
+| Language | Detected Symbols |
+|----------|-----------------|
+| TypeScript/JavaScript | functions, classes, interfaces, types, enums, methods, arrow functions |
+| Python | functions, classes |
+| Go | functions, structs, interfaces |
+| Java/Kotlin | classes, interfaces, methods |
+| Rust | functions, structs, traits, enums, impl blocks |
+
+For files under 300 lines, it returns the full content instead (same behavior as Claude Code's `readCode`).
+
+## Architecture
+
+```
+src/
+├── index.ts              # MCP server entry point + tool registration
+├── tools/                # One file per tool
+│   ├── read-file.ts
+│   ├── read-multiple.ts
+│   ├── find-files.ts
+│   ├── search-code.ts
+│   ├── list-directory.ts
+│   ├── read-symbols.ts
+│   ├── diff.ts
+│   ├── blame.ts
+│   └── commit-history.ts
+├── gitlab/
+│   ├── client.ts         # GitLab API client with caching
+│   ├── cache.ts          # LRU cache implementation
+│   └── types.ts          # API response types
+└── utils/
+    ├── format.ts         # Line numbers, truncation, binary detection
+    └── symbols.ts        # Regex-based symbol extraction
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome!
+
+## License
+
+[MIT](LICENSE)

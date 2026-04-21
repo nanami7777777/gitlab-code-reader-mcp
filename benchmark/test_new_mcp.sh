@@ -8,8 +8,8 @@
 set -e
 
 SERVER="../server"
-export GITLAB_TOKEN="REDACTED_TOKEN"
-export GITLAB_URL="https://git.uhomes.com"
+export GITLAB_TOKEN="${GITLAB_TOKEN:?Error: GITLAB_TOKEN environment variable is required}"
+export GITLAB_URL="${GITLAB_URL:-https://gitlab.com}"
 
 LOG_FILE="benchmark_new_mcp.log"
 > "$LOG_FILE"

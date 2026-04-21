@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nanami7777777/gitlab-code-reader-mcp/internal/gitlab"
 	"github.com/nanami7777777/gitlab-code-reader-mcp/internal/tools"
@@ -73,6 +77,40 @@ func main() {
 		"gitlab-code-reader",
 		"0.2.0",
 		server.WithInstructions(instructions),
+		server.WithToolHandlerMiddleware(func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+			return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				start := time.Now()
+				result, err := next(ctx, req)
+				elapsed := time.Since(start)
+
+				size := 0
+				lines := 0
+				if result != nil {
+					for _, c := range result.Content {
+						if tc, ok := c.(mcp.TextContent); ok {
+							size += len(tc.Text)
+							for _, ch := range tc.Text {
+								if ch == '\n' {
+									lines++
+								}
+							}
+						}
+					}
+				}
+				isErr := err != nil || (result != nil && result.IsError)
+				fmt.Fprintf(os.Stderr, "[METRIC] tool=%-20s bytes=%-6d lines=%-4d time=%-8s error=%v\n",
+					req.Params.Name, size, lines, elapsed.Round(time.Millisecond), isErr)
+				return result, err
+			}
+		}),
+		server.WithHooks(&server.Hooks{
+			OnBeforeCallTool: []server.OnBeforeCallToolFunc{
+				func(ctx context.Context, id any, req *mcp.CallToolRequest) {
+					argsJSON, _ := json.Marshal(req.Params.Arguments)
+					fmt.Fprintf(os.Stderr, "[CALL]   tool=%-20s args=%s\n", req.Params.Name, string(argsJSON))
+				},
+			},
+		}),
 	)
 
 	// Register all 9 tools
